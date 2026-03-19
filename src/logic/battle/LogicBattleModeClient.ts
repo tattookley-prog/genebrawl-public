@@ -12,6 +12,8 @@ import {LogicPlayer} from "./LogicPlayer";
 import {LogicCharacterClientOwn} from "./objects/LogicCharacterClientOwn";
 import {LogicGameObjectManagerClient} from "./objects/LogicGameObjectManagerClient";
 import {LogicProjectileClient} from "./objects/LogicProjectileClient";
+import {Configuration} from "../../gene/Configuration";
+import {LogicGameObjectClient} from "./objects/LogicGameObjectClient";
 
 const LogicBattleModeClient_getOwnCharacter = new NativeFunction( // "spray_def_atk" (not sure)
     Libg.offset(0x9C4330, 0x4B7480), 'pointer', ['pointer']
@@ -58,6 +60,58 @@ export class LogicBattleModeClient {
 
         if (this.isGameOver()) {
             return;
+        }
+
+        // AUTO DODGE
+        if (Configuration.autoDodge) {
+            this.tickAutoDodge();
+        }
+    }
+
+    private tickAutoDodge(): void {
+        try {
+            const ownCharacter = LogicBattleModeClient.getOwnCharacter(this.instance);
+            if (ownCharacter.isNull()) return;
+
+            const ownX = LogicGameObjectClient.getX(ownCharacter);
+            const ownY = LogicGameObjectClient.getY(ownCharacter);
+            const ownTeam = ownCharacter.add(64).readInt(); // teamIndexOffset
+
+            const DANGER_RADIUS_SQ = 700 * 700; // squared to avoid sqrt
+
+            const projObjects = this.projectileGameObjectManager.getGameObjects();
+
+            for (const obj of projObjects) {
+                if (!(obj instanceof LogicProjectileClient)) continue;
+
+                const proj = obj as LogicProjectileClient;
+                if (proj.getTeamIndex() === ownTeam) continue;
+
+                // Only dodge escapable projectiles
+                if (!proj.getData().canBeEscaped()) continue;
+
+                const projX = proj.getX();
+                const projY = proj.getY();
+
+                const dx = projX - ownX;
+                const dy = projY - ownY;
+                const distSq = dx * dx + dy * dy;
+
+                if (distSq < DANGER_RADIUS_SQ) {
+                    // Move perpendicular to projectile angle
+                    const angleRad = (proj.getAngle() + 90) * Math.PI / 180;
+                    const dodgeX = Math.round(ownX + Math.cos(angleRad) * 900);
+                    const dodgeY = Math.round(ownY + Math.sin(angleRad) * 900);
+
+                    const dodgeInput = new ClientInput(ClientInputType.Movement);
+                    dodgeInput.setXY(dodgeX, dodgeY);
+                    ClientInputManager.addInput(dodgeInput);
+
+                    break; // dodge first threatening projectile
+                }
+            }
+        } catch (e) {
+            console.error("LogicBattleModeClient::tickAutoDodge error:", e);
         }
     }
 

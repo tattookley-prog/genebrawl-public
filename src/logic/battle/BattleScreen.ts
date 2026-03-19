@@ -16,6 +16,9 @@ import {TeamStream} from "../home/team/TeamStream";
 import {HomeScreen} from "../home/HomeScreen";
 import {GameMain} from "../../laser/client/GameMain";
 import {ContextMenu} from "../../titan/flash/gui/ContextMenu";
+import {LogicGameObjectManagerClient} from "./objects/LogicGameObjectManagerClient";
+import {LogicCharacterClient} from "./objects/LogicCharacterClient";
+import {LogicProjectileClient} from "./objects/LogicProjectileClient";
 
 const BattleScreen_instance = Libg.offset(0x103E2F8, 0xEE64D0); // "pressReplayControlZap"
 
@@ -261,7 +264,96 @@ export class BattleScreen {
                 return;
             }
 
-            // I think you can implement whatever you need here by yourself :)
+            // Throttle: run logic every 3 ticks
+            BattleScreen.autoAttackTick++;
+            if (BattleScreen.autoAttackTick % 3 !== 0) {
+                return;
+            }
+
+            try {
+                const logicBattleModeClient = BattleMode.getLogic();
+                if (logicBattleModeClient.isNull()) return;
+
+                const ownCharacter = LogicBattleModeClient.getOwnCharacter(logicBattleModeClient);
+                if (ownCharacter.isNull()) return;
+
+                const ownX = LogicGameObjectClient.getX(ownCharacter);
+                const ownY = LogicGameObjectClient.getY(ownCharacter);
+                const ownTeam = ownCharacter.add(64).readInt(); // teamIndexOffset = 64
+
+                const gameObjectManagerPtr = logicBattleModeClient.add(40).readPointer();
+                if (gameObjectManagerPtr.isNull()) return;
+
+                const gameObjects = LogicGameObjectManagerClient.getGameObjects(gameObjectManagerPtr);
+
+                let closestEnemyPtr: NativePointer | null = null;
+                let closestAllyPtr: NativePointer | null = null;
+                let minEnemyDist = Number.MAX_VALUE;
+                let minAllyDist = Number.MAX_VALUE;
+
+                for (const obj of gameObjects) {
+                    if (!(obj instanceof LogicCharacterClient)) continue;
+                    if (obj.instance.equals(ownCharacter)) continue;
+
+                    const objX = obj.getX();
+                    const objY = obj.getY();
+                    const dx = objX - ownX;
+                    const dy = objY - ownY;
+                    const dist = dx * dx + dy * dy; // no sqrt needed for comparison
+
+                    const objTeam = obj.getTeamIndex();
+
+                    if (objTeam !== ownTeam) {
+                        if (dist < minEnemyDist) {
+                            minEnemyDist = dist;
+                            closestEnemyPtr = obj.instance;
+                        }
+                    } else {
+                        if (dist < minAllyDist) {
+                            minAllyDist = dist;
+                            closestAllyPtr = obj.instance;
+                        }
+                    }
+                }
+
+                if (Configuration.autoAim && closestEnemyPtr) {
+                    const attackInput = new ClientInput(ClientInputType.Attack);
+                    attackInput.setXY(
+                        LogicGameObjectClient.getX(closestEnemyPtr),
+                        LogicGameObjectClient.getY(closestEnemyPtr)
+                    );
+                    ClientInputManager.addInput(attackInput);
+                }
+
+                if (Configuration.autoUlti && closestEnemyPtr) {
+                    const ultiInput = new ClientInput(ClientInputType.Ulti);
+                    ultiInput.setXY(
+                        LogicGameObjectClient.getX(closestEnemyPtr),
+                        LogicGameObjectClient.getY(closestEnemyPtr)
+                    );
+                    ClientInputManager.addInput(ultiInput);
+                }
+
+                if (Configuration.moveToTarget && closestEnemyPtr) {
+                    const moveInput = new ClientInput(ClientInputType.Movement);
+                    moveInput.setXY(
+                        LogicGameObjectClient.getX(closestEnemyPtr),
+                        LogicGameObjectClient.getY(closestEnemyPtr)
+                    );
+                    ClientInputManager.addInput(moveInput);
+                }
+
+                if (Configuration.moveToAlly && closestAllyPtr) {
+                    const allyInput = new ClientInput(ClientInputType.Movement);
+                    allyInput.setXY(
+                        LogicGameObjectClient.getX(closestAllyPtr),
+                        LogicGameObjectClient.getY(closestAllyPtr)
+                    );
+                    ClientInputManager.addInput(allyInput);
+                }
+            } catch (e) {
+                console.error("BattleScreen::updateSkill auto features error:", e);
+            }
         }, 'void', ['pointer', 'pointer', 'float', 'pointer', 'bool']));
     }
 
