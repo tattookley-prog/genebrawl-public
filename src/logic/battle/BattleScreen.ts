@@ -261,11 +261,15 @@ export class BattleScreen {
             ];
 
             if (!enabledFunctions.includes(true)) {
+                BattleScreen.autoAttackTick = 0;
                 return;
             }
 
-            // Throttle: run logic every 3 ticks
+            // Throttle: run logic every 3 ticks; reset counter at overflow
             BattleScreen.autoAttackTick++;
+            if (BattleScreen.autoAttackTick >= 30000) {
+                BattleScreen.autoAttackTick = 0;
+            }
             if (BattleScreen.autoAttackTick % 3 !== 0) {
                 return;
             }
@@ -304,6 +308,8 @@ export class BattleScreen {
                     const objTeam = obj.getTeamIndex();
 
                     if (objTeam !== ownTeam) {
+                        // Skip dead/fading enemies
+                        if (obj.getFadeCounterClient() > 0) continue;
                         if (dist < minEnemyDist) {
                             minEnemyDist = dist;
                             closestEnemyPtr = obj.instance;
@@ -325,6 +331,15 @@ export class BattleScreen {
                     ClientInputManager.addInput(attackInput);
                 }
 
+                if (Configuration.holdToShoot && BattleScreen.isShootStickActive(battleScreen) && closestEnemyPtr) {
+                    const holdShootInput = new ClientInput(ClientInputType.Attack);
+                    holdShootInput.setXY(
+                        LogicGameObjectClient.getX(closestEnemyPtr),
+                        LogicGameObjectClient.getY(closestEnemyPtr)
+                    );
+                    ClientInputManager.addInput(holdShootInput);
+                }
+
                 if (Configuration.autoUlti && closestEnemyPtr) {
                     const ultiInput = new ClientInput(ClientInputType.Ulti);
                     ultiInput.setXY(
@@ -332,6 +347,15 @@ export class BattleScreen {
                         LogicGameObjectClient.getY(closestEnemyPtr)
                     );
                     ClientInputManager.addInput(ultiInput);
+                }
+
+                if (Configuration.autoOvercharge && closestEnemyPtr) {
+                    const overchargeInput = new ClientInput(ClientInputType.Overcharge);
+                    overchargeInput.setXY(
+                        LogicGameObjectClient.getX(closestEnemyPtr),
+                        LogicGameObjectClient.getY(closestEnemyPtr)
+                    );
+                    ClientInputManager.addInput(overchargeInput);
                 }
 
                 if (Configuration.moveToTarget && closestEnemyPtr) {
@@ -343,7 +367,8 @@ export class BattleScreen {
                     ClientInputManager.addInput(moveInput);
                 }
 
-                if (Configuration.moveToAlly && closestAllyPtr) {
+                // moveToAlly only runs when moveToTarget is not active or no enemy found
+                if (Configuration.moveToAlly && closestAllyPtr && !(Configuration.moveToTarget && closestEnemyPtr)) {
                     const allyInput = new ClientInput(ClientInputType.Movement);
                     allyInput.setXY(
                         LogicGameObjectClient.getX(closestAllyPtr),
