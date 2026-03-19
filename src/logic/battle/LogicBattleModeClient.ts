@@ -34,13 +34,15 @@ export class LogicBattleModeClient {
     static self: LogicBattleModeClient;
 
     private instance: NativePointer;
-    private bulletXY!: number[][];
+    private bulletXY: number[][] = [];
     private tileMap: LogicTileMap;
     private ticksGone: number = 0;
+    private dodgeTick: number = 0;
     private projectileGameObjectManager: LogicGameObjectManagerClient;
 
     constructor(instance: NativePointer) {
         this.instance = instance;
+        this.bulletXY = [];
 
         this.tileMap = new LogicTileMap(
             instance.add(LogicBattleModeClient_tileMapOffset).readPointer()
@@ -70,6 +72,10 @@ export class LogicBattleModeClient {
 
     private tickAutoDodge(): void {
         try {
+            // Throttle: run every 2 ticks
+            this.dodgeTick++;
+            if (this.dodgeTick % 2 !== 0) return;
+
             const ownCharacter = LogicBattleModeClient.getOwnCharacter(this.instance);
             if (ownCharacter.isNull()) return;
 
@@ -77,9 +83,11 @@ export class LogicBattleModeClient {
             const ownY = LogicGameObjectClient.getY(ownCharacter);
             const ownTeam = ownCharacter.add(64).readInt(); // teamIndexOffset
 
-            const DANGER_RADIUS_SQ = 700 * 700; // squared to avoid sqrt
-
             const projObjects = this.projectileGameObjectManager.getGameObjects();
+
+            // Find the closest threatening projectile
+            let closestThreat: LogicProjectileClient | null = null;
+            let closestDistSq = Number.MAX_VALUE;
 
             for (const obj of projObjects) {
                 if (!(obj instanceof LogicProjectileClient)) continue;
@@ -87,8 +95,14 @@ export class LogicBattleModeClient {
                 const proj = obj as LogicProjectileClient;
                 if (proj.getTeamIndex() === ownTeam) continue;
 
-                // Only dodge escapable projectiles
-                if (!proj.getData().canBeEscaped()) continue;
+                const data = proj.getData();
+                if (!data.canBeEscaped()) continue;
+
+                // Scale danger threshold based on projectile speed.
+                // dangerThresholdSq = 700 * speed gives danger radius sqrt(700*speed),
+                // which equals 700 at speed=700 and grows proportionally for faster projectiles.
+                const speed = data.getSpeed();
+                const dangerThresholdSq = 700 * Math.max(300, speed);
 
                 const projX = proj.getX();
                 const projY = proj.getY();
@@ -97,19 +111,48 @@ export class LogicBattleModeClient {
                 const dy = projY - ownY;
                 const distSq = dx * dx + dy * dy;
 
-                if (distSq < DANGER_RADIUS_SQ) {
-                    // Move perpendicular to projectile angle
-                    const angleRad = (proj.getAngle() + 90) * Math.PI / 180;
-                    const dodgeX = Math.round(ownX + Math.cos(angleRad) * 900);
-                    const dodgeY = Math.round(ownY + Math.sin(angleRad) * 900);
-
-                    const dodgeInput = new ClientInput(ClientInputType.Movement);
-                    dodgeInput.setXY(dodgeX, dodgeY);
-                    ClientInputManager.addInput(dodgeInput);
-
-                    break; // dodge first threatening projectile
+                if (distSq < dangerThresholdSq && distSq < closestDistSq) {
+                    closestDistSq = distSq;
+                    closestThreat = proj;
                 }
             }
+
+            if (!closestThreat) return;
+
+            // Check BOTH perpendicular directions and pick the one further from enemy projectiles
+            const projAngle = closestThreat.getAngle();
+            const angleRad1 = (projAngle + 90) * Math.PI / 180;
+            const angleRad2 = (projAngle - 90) * Math.PI / 180;
+
+            const dodgeX1 = Math.round(ownX + Math.cos(angleRad1) * 900);
+            const dodgeY1 = Math.round(ownY + Math.sin(angleRad1) * 900);
+            const dodgeX2 = Math.round(ownX + Math.cos(angleRad2) * 900);
+            const dodgeY2 = Math.round(ownY + Math.sin(angleRad2) * 900);
+
+            // Score each direction by how many projectiles are nearby
+            let score1 = 0;
+            let score2 = 0;
+
+            for (const obj of projObjects) {
+                if (!(obj instanceof LogicProjectileClient)) continue;
+                const proj = obj as LogicProjectileClient;
+                if (proj.getTeamIndex() === ownTeam) continue;
+
+                const px = proj.getX();
+                const py = proj.getY();
+                const d1 = (px - dodgeX1) * (px - dodgeX1) + (py - dodgeY1) * (py - dodgeY1);
+                const d2 = (px - dodgeX2) * (px - dodgeX2) + (py - dodgeY2) * (py - dodgeY2);
+                if (d1 < d2) score1++;
+                else score2++;
+            }
+
+            // Pick direction further from projectiles (lower score = fewer nearby projectiles)
+            const dodgeX = score1 <= score2 ? dodgeX1 : dodgeX2;
+            const dodgeY = score1 <= score2 ? dodgeY1 : dodgeY2;
+
+            const dodgeInput = new ClientInput(ClientInputType.Movement);
+            dodgeInput.setXY(dodgeX, dodgeY);
+            ClientInputManager.addInput(dodgeInput);
         } catch (e) {
             console.error("LogicBattleModeClient::tickAutoDodge error:", e);
         }

@@ -7,6 +7,7 @@ const grapplesEnemyOffset = 430;
 const uniquePropertyOffset = 492;
 const renderingOffset = 553;
 const speedOffset = 180;
+const indirectOffset = 152;
 
 export class LogicProjectileData extends LogicData {
     constructor(instance: NativePointer) {
@@ -37,17 +38,12 @@ export class LogicProjectileData extends LogicData {
         return this.instance.add(piercesCharactersOffset).readU8() == 1;
     }
 
-    canBeEscaped() {
-        const prop = this.getUniqueProperty();
-        const name = this.getName();
+    isIndirect(): boolean {
+        return Boolean(this.instance.add(indirectOffset).readU8());
+    }
 
-        const isBeamer = name.startsWith("Beame") && name.endsWith("UltiProjectile");
-
-        return isBeamer ||
-            prop == 5 || // buzz
-            prop == 13 || // cordelius
-            prop == 17 || // charlie
-            prop == 21;  // lily
+    canBeEscaped(): boolean {
+        return !this.isGrapplesEnemy() && !this.isIndirect();
     }
 
     isDoNotRotateClip() {
