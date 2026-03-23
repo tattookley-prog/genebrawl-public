@@ -28,7 +28,7 @@ const LogicSkinData_createReferences = new NativeFunction( // "OutlineShader"
 );
 
 const EmoteIcon_playAnim = new NativeFunction( // "emote_in_use_ph"
-    Libg.offset(0x707708, 0x295D28), 'void', ['pointer', 'int', 'bool', 'float']
+    Libg.offset(0x8fa870, 0x295D28), 'void', ['pointer', 'int', 'bool', 'float']
 );
 
 export class LogicData {

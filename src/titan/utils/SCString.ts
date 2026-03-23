@@ -3,7 +3,7 @@ import {Libg} from "../../libs/Libg";
 import {Buffer} from 'buffer';
 
 const String_ctor = new NativeFunction( // "CancelledIAPs"
-    Libg.offset(0xBF8148, 0xB922CC), 'void', ['pointer', 'pointer']
+    Libg.offset(0x5bae94, 0xB922CC), 'void', ['pointer', 'pointer']
 );
 
 export class SCString {
