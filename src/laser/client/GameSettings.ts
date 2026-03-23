@@ -20,7 +20,7 @@ const GameSettings_enableMusic = new NativeFunction(
 );
 
 const GameSettings_enableHaptics = new NativeFunction(
-    Libg.offset(0x7F34B8, 0x35B96C), 'void', ['pointer', 'int'] // "haptics_toggle"
+    Libg.offset(0x9f5980, 0x35B96C), 'void', ['pointer', 'int'] // "haptics_toggle"
 );
 
 export class GameSettings {
