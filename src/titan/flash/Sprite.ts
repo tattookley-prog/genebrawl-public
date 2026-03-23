@@ -10,7 +10,7 @@ const Sprite_addChildAt = new NativeFunction( // inside Sprite::addChild
 );
 
 const Sprite_removeChild = new NativeFunction( // "scroll_area_mask"
-    Libg.offset(0xA60098, 0x9BD0FC), 'void', ['pointer', 'pointer']
+    Libg.offset(0xca7aa0, 0x9BD0FC), 'void', ['pointer', 'pointer']
 );
 
 const Sprite_removeChildAt = new NativeFunction(
